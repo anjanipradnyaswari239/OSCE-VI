@@ -100,10 +100,18 @@ const timerPhase = document.getElementById('timerPhase');
 const stationsList = document.getElementById('stationsList');
 const finishedMessage = document.getElementById('finishedMessage');
 
-// Random station selector - picks 4 random unique stations
+// Random station selector - picks ONE from each category (A, B, C, D)
 function selectRandomStations() {
-    const shuffled = [...allItems].sort(() => Math.random() - 0.5);
-    return shuffled.slice(0, 4);
+    const categories = ['A', 'B', 'C', 'D'];
+    const selectedStations = [];
+    
+    categories.forEach(catId => {
+        const itemsInCategory = allItems.filter(item => item.category === catId);
+        const randomItem = itemsInCategory[Math.floor(Math.random() * itemsInCategory.length)];
+        selectedStations.push(randomItem);
+    });
+    
+    return selectedStations;
 }
 
 // Format seconds to MM:SS
@@ -200,6 +208,7 @@ function startSimulation() {
     document.body.classList.remove('alert-red');
 
     startBtn.disabled = true;
+    startBtn.textContent = 'Start Simulation';
     resetBtn.disabled = false;
 
     displayStations();
@@ -221,10 +230,9 @@ function handleSimulationComplete() {
     document.body.classList.remove('alert-red');
     finishedMessage.classList.remove('hidden');
 
-    // Auto reset after 3 seconds
-    setTimeout(() => {
-        resetSimulation();
-    }, 3000);
+    // Allow user to manually start next round (reroll)
+    startBtn.disabled = false;
+    startBtn.textContent = 'Reroll Next Station';
 }
 
 // Reset simulation
@@ -239,6 +247,7 @@ function resetSimulation() {
     document.body.classList.remove('alert-red');
 
     startBtn.disabled = false;
+    startBtn.textContent = 'Start Simulation';
     resetBtn.disabled = true;
 
     timerDisplay.textContent = '00:00';
