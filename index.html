@@ -9,26 +9,21 @@
 <body>
     <div class="container">
         <h1>OSCE Simulation</h1>
-        
+
         <div class="control-panel">
             <button id="generateBtn" class="btn btn-secondary">Generate Stations</button>
-            <button id="startBtn" class="btn btn-primary" disabled>Start Timer</button>
-            <button id="resetBtn" class="btn btn-secondary" disabled>Reset Timer</button>
         </div>
 
-        <div class="timer-section">
-            <div id="timerDisplay" class="timer-display">00:00</div>
-            <div id="timerPhase" class="timer-phase">Ready to Start</div>
+        <div class="instructions">
+            The station cards should be rendered immediately after Generate Stations using the generated state, not waiting for a timer state change or page refresh.
         </div>
 
         <div class="stations-section">
             <h2>Selected Stations</h2>
             <div id="stationsList" class="stations-list">
-                <p>Click "Start Simulation" to generate stations</p>
+                <p>Click "Generate Stations" to generate 4 station cards.</p>
             </div>
         </div>
-
-        <div id="finishedMessage" class="finished-message hidden">FINISHED!</div>
     </div>
 
     <script src="script.js"></script>

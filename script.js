@@ -3,10 +3,10 @@ const osceData = {
     categories: [
         {
             id: 'A',
-            name: 'Cardiovaskular',
+            name: 'Cardiovascular',
             items: [
                 'Pemeriksaan Fisik Kardiovaskular I',
-                'Pemeriksaan Fisik Kardiovaskuler II',
+                'Pemeriksaan Fisik Kardiovaskular II',
                 'Resusitasi Jantung Paru (RJP)',
                 'Pemasangan dan Interpretasi EKG Sederhana',
                 'AED',
@@ -61,244 +61,302 @@ const osceData = {
     ]
 };
 
-// Create flattened list with item numbers (1-33)
-function createFlattenedList() {
-    let itemNumber = 1;
-    const flattened = [];
-    
-    osceData.categories.forEach(category => {
-        category.items.forEach(item => {
-            flattened.push({
-                number: itemNumber,
-                category: category.id,
-                categoryName: category.name,
-                name: item
-            });
-            itemNumber++;
-        });
-    });
-    
-    return flattened;
-}
+const STATION_DURATION = 420; // 7 minutes total in seconds
 
-const allItems = createFlattenedList();
-
-// State Management
 let state = {
-    isRunning: false,
-    selectedStations: [],
-    startTime: null,
-    interval: null,
-    timerSeconds: 0
+    stations: []
 };
 
-// Elements
 const generateBtn = document.getElementById('generateBtn');
-const startBtn = document.getElementById('startBtn');
-const resetBtn = document.getElementById('resetBtn');
-const timerDisplay = document.getElementById('timerDisplay');
-const timerPhase = document.getElementById('timerPhase');
 const stationsList = document.getElementById('stationsList');
-const finishedMessage = document.getElementById('finishedMessage');
 
-// Random station selector - picks ONE from each category (A, B, C, D)
-function selectRandomStations() {
-    const categories = ['A', 'B', 'C', 'D'];
-    const selectedStations = [];
-    
-    categories.forEach(catId => {
-        selectedStations.push(rerollCategory(catId, false));
-    });
-    
-    return selectedStations;
-}
+function getRandomStationItem(categoryId, excludeNumber = null) {
+    const category = osceData.categories.find(cat => cat.id === categoryId);
+    if (!category) return null;
 
-// Reroll a single category station
-function rerollCategory(categoryId, updateDisplay = true) {
-    const itemsInCategory = allItems.filter(item => item.category === categoryId);
-    const current = state.selectedStations.find(item => item.category === categoryId);
-    let randomItem = itemsInCategory[Math.floor(Math.random() * itemsInCategory.length)];
+    let index = Math.floor(Math.random() * category.items.length);
+    let number = getCategoryStartNumber(categoryId) + index;
 
-    if (current) {
-        while (randomItem.number === current.number) {
-            randomItem = itemsInCategory[Math.floor(Math.random() * itemsInCategory.length)];
+    if (excludeNumber !== null && category.items.length > 1) {
+        while (number === excludeNumber) {
+            index = Math.floor(Math.random() * category.items.length);
+            number = getCategoryStartNumber(categoryId) + index;
         }
-        state.selectedStations = state.selectedStations.map(item =>
-            item.category === categoryId ? randomItem : item
-        );
     }
 
-    if (updateDisplay) {
-        displayStations();
-    }
-
-    return randomItem;
+    return {
+        number,
+        category: categoryId,
+        categoryName: category.name,
+        name: category.items[index]
+    };
 }
 
-// Format seconds to MM:SS
+function getCategoryStartNumber(categoryId) {
+    let number = 1;
+    for (const category of osceData.categories) {
+        if (category.id === categoryId) break;
+        number += category.items.length;
+    }
+    return number;
+}
+
+function createStation(categoryId) {
+    const item = getRandomStationItem(categoryId);
+    return {
+        ...item,
+        timerSeconds: 0,
+        isRunning: false,
+        finished: false,
+        intervalId: null,
+        announcedStart: false,
+        announcedOneMinute: false,
+        announcedFinish: false
+    };
+}
+
+function generateStations() {
+    clearAllIntervals();
+    state.stations = ['A', 'B', 'C', 'D'].map(createStation);
+    renderStations();
+}
+
+function clearAllIntervals() {
+    state.stations.forEach(station => {
+        if (station.intervalId) {
+            clearInterval(station.intervalId);
+            station.intervalId = null;
+        }
+    });
+}
+
+function anyTimerRunning() {
+    return state.stations.some(station => station.isRunning);
+}
+
 function formatTime(seconds) {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 }
 
-// Determine current phase and remaining time
-function getPhaseInfo(seconds) {
-    if (seconds < 120) {
-        // First 2 minutes: Reading phase
-        return {
-            phase: 'Reading Phase (2 minutes)',
-            remaining: 120 - seconds,
-            isReadingPhase: true,
-            isActionPhase: false
-        };
-    } else if (seconds < 540) {
-        // After 2 minutes, up to 9 minutes: Action phase
-        return {
-            phase: 'Action Phase (7 minutes)',
-            remaining: 540 - seconds,
-            isReadingPhase: false,
-            isActionPhase: true
-        };
-    } else {
-        // 9 minutes reached: Done
-        return {
-            phase: 'Complete',
-            remaining: 0,
-            isReadingPhase: false,
-            isActionPhase: false
-        };
-    }
+function getRemainingSeconds(seconds) {
+    return Math.max(0, STATION_DURATION - seconds);
 }
 
-// Display selected stations and per-category reroll buttons
-function displayStations() {
-    if (state.selectedStations.length === 0) {
-        stationsList.innerHTML = '<p>Click "Start Simulation" to generate stations</p>';
+function getPhaseText(seconds) {
+    if (seconds >= STATION_DURATION) return 'Finished';
+    return 'In Progress';
+}
+
+function renderStations() {
+    if (state.stations.length === 0) {
+        stationsList.innerHTML = '<p>Click "Generate Stations" to generate 4 station cards.</p>';
         return;
     }
 
-    const canReroll = !state.isRunning;
+    const lockReroll = anyTimerRunning();
 
-    stationsList.innerHTML = state.selectedStations
-        .map((station, index) => {
-            return `
-                <div class="station-item">
-                    <div class="station-category">
-                        ${station.categoryName}
-                    </div>
-                    <div class="station-name">
-                        <span class="station-number">${station.number}</span>
-                        ${station.name}
-                    </div>
-                    <button class="reroll-btn" data-category="${station.category}" ${canReroll ? '' : 'disabled'}>
-                        Reroll ${station.categoryName}
+    stationsList.innerHTML = state.stations.map(station => {
+        const remaining = getRemainingSeconds(station.timerSeconds);
+        return `
+            <div class="station-card" data-category="${station.category}">
+                <div class="station-header">
+                    <div class="station-category">${station.categoryName}</div>
+                    <div class="station-number">${station.number}</div>
+                </div>
+                <div class="station-details">${station.name}</div>
+                <div class="station-actions">
+                    <button class="btn btn-secondary reroll-btn" data-category="${station.category}" ${lockReroll ? 'disabled' : ''}>
+                        Reroll
+                    </button>
+                    <button class="btn btn-primary start-btn" data-category="${station.category}" ${station.isRunning || station.finished ? 'disabled' : ''}>
+                        ${station.isRunning ? 'Running...' : 'Start Timer'}
+                    </button>
+                    <button class="btn btn-secondary reset-btn" data-category="${station.category}" ${station.timerSeconds === 0 && !station.finished ? 'disabled' : ''}>
+                        Reset Timer
                     </button>
                 </div>
-            `;
-        })
-        .join('');
+                <div class="station-timer">${formatTime(remaining)}</div>
+                <div class="station-phase">${getPhaseText(station.timerSeconds)}</div>
+            </div>
+        `;
+    }).join('');
 
+    attachCardListeners();
+}
+
+function attachCardListeners() {
     document.querySelectorAll('.reroll-btn').forEach(button => {
         button.addEventListener('click', () => {
             const categoryId = button.getAttribute('data-category');
-            rerollCategory(categoryId);
+            rerollStation(categoryId);
+        });
+    });
+
+    document.querySelectorAll('.start-btn').forEach(button => {
+        button.addEventListener('click', () => {
+            const categoryId = button.getAttribute('data-category');
+            startStationTimer(categoryId);
+        });
+    });
+
+    document.querySelectorAll('.reset-btn').forEach(button => {
+        button.addEventListener('click', () => {
+            const categoryId = button.getAttribute('data-category');
+            resetStationTimer(categoryId);
         });
     });
 }
 
-// Update timer display and handle color changes
-function updateTimer() {
-    const phaseInfo = getPhaseInfo(state.timerSeconds);
-    
-    timerDisplay.textContent = formatTime(phaseInfo.remaining);
-    timerPhase.textContent = phaseInfo.phase;
+function playBell(duration = 200, frequency = 880, volume = 0.5) {
+    if (!window.AudioContext && !window.webkitAudioContext) return;
 
-    // Remove all timer classes
-    timerDisplay.classList.remove('warning', 'alert');
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    const audioCtx = new AudioContext();
+    const oscillator = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
 
-    // Check for alert state (1 minute left in action phase, i.e., at 8 minutes total)
-    if (state.timerSeconds >= 480 && state.timerSeconds < 540 && phaseInfo.isActionPhase) {
-        timerDisplay.classList.add('alert');
-        document.body.classList.add('alert-red');
-    } else {
-        document.body.classList.remove('alert-red');
-    }
+    oscillator.type = 'sine';
+    oscillator.frequency.value = frequency;
+    gainNode.gain.value = volume;
 
-    // Check for completion (9 minutes = 540 seconds)
-    if (state.timerSeconds >= 540) {
-        handleSimulationComplete();
-    }
+    oscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    oscillator.start();
+
+    setTimeout(() => {
+        oscillator.stop();
+        audioCtx.close();
+    }, duration);
 }
 
-// Start the timer
-function startTimer() {
-    if (state.isRunning || state.selectedStations.length === 0) return;
+function speakText(text) {
+    if (!window.speechSynthesis) return;
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    utterance.volume = 1;
+    window.speechSynthesis.speak(utterance);
+}
 
-    state.isRunning = true;
-    state.timerSeconds = 0;
-    finishedMessage.classList.add('hidden');
-    document.body.classList.remove('alert-red');
+function playBellAndSpeak(text) {
+    if (!window.AudioContext && !window.webkitAudioContext) {
+        speakText(text);
+        return;
+    }
 
-    startBtn.disabled = true;
-    generateBtn.disabled = true;
-    resetBtn.disabled = false;
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    const audioCtx = new AudioContext();
+    const oscillator = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
 
-    displayStations();
-    updateTimer();
+    oscillator.type = 'sine';
+    oscillator.frequency.value = 880;
+    gainNode.gain.value = 0.6;
 
-    // Update timer every second
-    state.interval = setInterval(() => {
-        state.timerSeconds++;
-        updateTimer();
+    oscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    oscillator.start();
+
+    setTimeout(() => {
+        oscillator.stop();
+        audioCtx.close();
+        speakText(text);
+    }, 200);
+}
+
+function rerollStation(categoryId) {
+    if (anyTimerRunning()) return;
+
+    const station = state.stations.find(s => s.category === categoryId);
+    if (!station) return;
+
+    const newStation = getRandomStationItem(categoryId, station.number);
+    station.number = newStation.number;
+    station.name = newStation.name;
+    station.categoryName = newStation.categoryName;
+    station.timerSeconds = 0;
+    station.isRunning = false;
+    station.finished = false;
+    station.intervalId = null;
+    station.announcedStart = false;
+    station.announcedOneMinute = false;
+    station.announcedFinish = false;
+
+    renderStations();
+}
+
+function startStationTimer(categoryId) {
+    const station = state.stations.find(s => s.category === categoryId);
+    if (!station || station.isRunning || station.finished) return;
+
+    station.isRunning = true;
+    station.announcedStart = false;
+    station.announcedOneMinute = false;
+    station.announcedFinish = false;
+
+    playBellAndSpeak('Please enter the room.');
+    station.announcedStart = true;
+
+    station.intervalId = setInterval(() => {
+        station.timerSeconds += 1;
+        const remaining = getRemainingSeconds(station.timerSeconds);
+
+        if (remaining === 60 && !station.announcedOneMinute) {
+            speakText('One minute left.');
+            station.announcedOneMinute = true;
+        }
+
+        if (station.timerSeconds >= STATION_DURATION) {
+            completeStationTimer(categoryId);
+        } else {
+            renderStations();
+        }
     }, 1000);
+
+    renderStations();
 }
 
-// Handle simulation completion
-function handleSimulationComplete() {
-    clearInterval(state.interval);
-    state.isRunning = false;
-    
-    timerDisplay.classList.remove('alert');
-    document.body.classList.remove('alert-red');
-    finishedMessage.classList.remove('hidden');
+function completeStationTimer(categoryId) {
+    const station = state.stations.find(s => s.category === categoryId);
+    if (!station) return;
 
-    startBtn.disabled = true;
-    generateBtn.disabled = false;
-    startBtn.textContent = 'Start Timer';
-    displayStations();
+    station.isRunning = false;
+    station.finished = true;
+    station.timerSeconds = STATION_DURATION;
+    if (station.intervalId) {
+        clearInterval(station.intervalId);
+        station.intervalId = null;
+    }
+
+    if (!station.announcedFinish) {
+        playBellAndSpeak('You can leave the room.');
+        station.announcedFinish = true;
+    }
+
+    renderStations();
 }
 
-// Reset timer only
-function resetTimer() {
-    clearInterval(state.interval);
-    state.isRunning = false;
-    state.timerSeconds = 0;
+function resetStationTimer(categoryId) {
+    const station = state.stations.find(s => s.category === categoryId);
+    if (!station) return;
 
-    finishedMessage.classList.add('hidden');
-    timerDisplay.classList.remove('warning', 'alert');
-    document.body.classList.remove('alert-red');
+    if (station.intervalId) {
+        clearInterval(station.intervalId);
+        station.intervalId = null;
+    }
 
-    startBtn.disabled = false;
-    generateBtn.disabled = false;
-    resetBtn.disabled = true;
+    station.timerSeconds = 0;
+    station.isRunning = false;
+    station.finished = false;
+    station.announcedStart = false;
+    station.announcedOneMinute = false;
+    station.announcedFinish = false;
 
-    timerDisplay.textContent = '00:00';
-    timerPhase.textContent = 'Ready to Start';
-    displayStations();
+    renderStations();
 }
 
-// Event listeners
-generateBtn.addEventListener('click', () => {
-    if (state.isRunning) return;
-    state.selectedStations = selectRandomStations();
-    finishedMessage.classList.add('hidden');
-    displayStations();
-    startBtn.disabled = false;
-});
+generateBtn.addEventListener('click', generateStations);
 
-startBtn.addEventListener('click', startTimer);
-resetBtn.addEventListener('click', resetTimer);
-
-// Initialize
-resetTimer();
+renderStations();
