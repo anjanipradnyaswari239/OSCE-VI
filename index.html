@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OSCE Simulation</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>OSCE Simulation</h1>
+        
+        <div class="control-panel">
+            <button id="startBtn" class="btn btn-primary">Start Simulation</button>
+            <button id="resetBtn" class="btn btn-secondary">Reset</button>
+        </div>
+
+        <div class="timer-section">
+            <div id="timerDisplay" class="timer-display">00:00</div>
+            <div id="timerPhase" class="timer-phase">Ready to Start</div>
+        </div>
+
+        <div class="stations-section">
+            <h2>Selected Stations</h2>
+            <div id="stationsList" class="stations-list">
+                <p>Click "Start Simulation" to generate stations</p>
+            </div>
+        </div>
+
+        <div id="finishedMessage" class="finished-message hidden">FINISHED!</div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
