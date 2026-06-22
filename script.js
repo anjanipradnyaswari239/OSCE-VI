@@ -93,6 +93,7 @@ let state = {
 };
 
 // Elements
+const generateBtn = document.getElementById('generateBtn');
 const startBtn = document.getElementById('startBtn');
 const resetBtn = document.getElementById('resetBtn');
 const timerDisplay = document.getElementById('timerDisplay');
@@ -106,12 +107,32 @@ function selectRandomStations() {
     const selectedStations = [];
     
     categories.forEach(catId => {
-        const itemsInCategory = allItems.filter(item => item.category === catId);
-        const randomItem = itemsInCategory[Math.floor(Math.random() * itemsInCategory.length)];
-        selectedStations.push(randomItem);
+        selectedStations.push(rerollCategory(catId, false));
     });
     
     return selectedStations;
+}
+
+// Reroll a single category station
+function rerollCategory(categoryId, updateDisplay = true) {
+    const itemsInCategory = allItems.filter(item => item.category === categoryId);
+    const current = state.selectedStations.find(item => item.category === categoryId);
+    let randomItem = itemsInCategory[Math.floor(Math.random() * itemsInCategory.length)];
+
+    if (current) {
+        while (randomItem.number === current.number) {
+            randomItem = itemsInCategory[Math.floor(Math.random() * itemsInCategory.length)];
+        }
+        state.selectedStations = state.selectedStations.map(item =>
+            item.category === categoryId ? randomItem : item
+        );
+    }
+
+    if (updateDisplay) {
+        displayStations();
+    }
+
+    return randomItem;
 }
 
 // Format seconds to MM:SS
@@ -127,13 +148,12 @@ function getPhaseInfo(seconds) {
         // First 2 minutes: Reading phase
         return {
             phase: 'Reading Phase (2 minutes)',
-            remaining: seconds,
+            remaining: 120 - seconds,
             isReadingPhase: true,
             isActionPhase: false
         };
     } else if (seconds < 540) {
         // After 2 minutes, up to 9 minutes: Action phase
-        const actionSeconds = seconds - 120;
         return {
             phase: 'Action Phase (7 minutes)',
             remaining: 540 - seconds,
@@ -151,26 +171,40 @@ function getPhaseInfo(seconds) {
     }
 }
 
-// Display selected stations
+// Display selected stations and per-category reroll buttons
 function displayStations() {
     if (state.selectedStations.length === 0) {
         stationsList.innerHTML = '<p>Click "Start Simulation" to generate stations</p>';
         return;
     }
 
+    const canReroll = !state.isRunning;
+
     stationsList.innerHTML = state.selectedStations
-        .map(station => `
-            <div class="station-item">
-                <div class="station-category">
-                    Category ${station.category}: ${station.categoryName}
+        .map((station, index) => {
+            return `
+                <div class="station-item">
+                    <div class="station-category">
+                        ${station.categoryName}
+                    </div>
+                    <div class="station-name">
+                        <span class="station-number">${station.number}</span>
+                        ${station.name}
+                    </div>
+                    <button class="reroll-btn" data-category="${station.category}" ${canReroll ? '' : 'disabled'}>
+                        Reroll ${station.categoryName}
+                    </button>
                 </div>
-                <div class="station-name">
-                    <span class="station-number">${station.number}</span>
-                    ${station.name}
-                </div>
-            </div>
-        `)
+            `;
+        })
         .join('');
+
+    document.querySelectorAll('.reroll-btn').forEach(button => {
+        button.addEventListener('click', () => {
+            const categoryId = button.getAttribute('data-category');
+            rerollCategory(categoryId);
+        });
+    });
 }
 
 // Update timer display and handle color changes
@@ -197,18 +231,17 @@ function updateTimer() {
     }
 }
 
-// Start the simulation
-function startSimulation() {
-    if (state.isRunning) return;
+// Start the timer
+function startTimer() {
+    if (state.isRunning || state.selectedStations.length === 0) return;
 
     state.isRunning = true;
-    state.selectedStations = selectRandomStations();
     state.timerSeconds = 0;
     finishedMessage.classList.add('hidden');
     document.body.classList.remove('alert-red');
 
     startBtn.disabled = true;
-    startBtn.textContent = 'Start Simulation';
+    generateBtn.disabled = true;
     resetBtn.disabled = false;
 
     displayStations();
@@ -230,34 +263,42 @@ function handleSimulationComplete() {
     document.body.classList.remove('alert-red');
     finishedMessage.classList.remove('hidden');
 
-    // Allow user to manually start next round (reroll)
-    startBtn.disabled = false;
-    startBtn.textContent = 'Reroll Next Station';
+    startBtn.disabled = true;
+    generateBtn.disabled = false;
+    startBtn.textContent = 'Start Timer';
+    displayStations();
 }
 
-// Reset simulation
-function resetSimulation() {
+// Reset timer only
+function resetTimer() {
     clearInterval(state.interval);
     state.isRunning = false;
     state.timerSeconds = 0;
-    state.selectedStations = [];
 
     finishedMessage.classList.add('hidden');
     timerDisplay.classList.remove('warning', 'alert');
     document.body.classList.remove('alert-red');
 
     startBtn.disabled = false;
-    startBtn.textContent = 'Start Simulation';
+    generateBtn.disabled = false;
     resetBtn.disabled = true;
 
     timerDisplay.textContent = '00:00';
     timerPhase.textContent = 'Ready to Start';
-    stationsList.innerHTML = '<p>Click "Start Simulation" to generate stations</p>';
+    displayStations();
 }
 
 // Event listeners
-startBtn.addEventListener('click', startSimulation);
-resetBtn.addEventListener('click', resetSimulation);
+generateBtn.addEventListener('click', () => {
+    if (state.isRunning) return;
+    state.selectedStations = selectRandomStations();
+    finishedMessage.classList.add('hidden');
+    displayStations();
+    startBtn.disabled = false;
+});
+
+startBtn.addEventListener('click', startTimer);
+resetBtn.addEventListener('click', resetTimer);
 
 // Initialize
-resetSimulation();
+resetTimer();
