@@ -66,6 +66,8 @@ const STATION_DURATION = 420; // 7 minutes total in seconds
 let state = {
     stations: []
 };
+ 
+state.filters = {};
 
 let generateBtn = null;
 let stationsList = null;
@@ -89,8 +91,15 @@ function init() {
     }
 
     generateBtn.addEventListener('click', generateStations);
+    initializeFilters();
     renderSelectionPanel();
     renderStations();
+}
+
+function initializeFilters() {
+    osceData.categories.forEach(category => {
+        state.filters[category.id] = new Set(category.items);
+    });
 }
 
 function getRandomStationItem(categoryId, excludeNumber = null) {
@@ -138,14 +147,40 @@ function renderSelectionPanel() {
             <div class="filter-category">
                 <h3>${escapeHtml(category.name)}</h3>
                 ${category.items.map(item => `
-                    <label class="filter-option">
-                        <input type="checkbox" name="filter-${category.id}" value="${escapeHtml(item)}" checked>
+                    <label class="filter-option" for="filter-${category.id}-${category.items.indexOf(item)}">
+                        <input
+                            id="filter-${category.id}-${category.items.indexOf(item)}"
+                            type="checkbox"
+                            data-category="${category.id}"
+                            data-item="${escapeHtml(item)}"
+                            ${state.filters[category.id].has(item) ? 'checked' : ''}
+                        >
                         ${escapeHtml(item)}
                     </label>
                 `).join('')}
             </div>
         `;
     }).join('');
+    attachFilterListeners();
+}
+
+function attachFilterListeners() {
+    selectionPanel.querySelectorAll('input[type="checkbox"]').forEach(input => {
+        input.addEventListener('change', () => {
+            const categoryId = input.dataset.category;
+            const itemName = input.dataset.item;
+            if (!categoryId || !itemName) return;
+
+            if (input.checked) {
+                state.filters[categoryId].add(itemName);
+            } else {
+                state.filters[categoryId].delete(itemName);
+            }
+
+            clearSelectionError();
+        });
+    });
+
 }
 
 function createStation(categoryId) {
@@ -163,8 +198,7 @@ function createStation(categoryId) {
 }
 
 function getSelectedItems(categoryId) {
-    const checkboxes = document.querySelectorAll(`input[name="filter-${categoryId}"]:checked`);
-    return Array.from(checkboxes).map(input => input.value);
+    return Array.from(state.filters[categoryId] || []);
 }
 
 function showSelectionError(message) {
@@ -366,8 +400,28 @@ function rerollStation(categoryId) {
 
     const station = state.stations.find(s => s.category === categoryId);
     if (!station) return;
+    const available = getSelectedItems(categoryId);
+    if (available.length === 0) {
+        showSelectionError(`Please select at least one checklist for ${station.categoryName}.`);
+        return;
+    }
 
-    const newStation = getRandomStationItem(categoryId, station.number);
+    let itemName = station.name;
+    if (available.length === 1) {
+        itemName = available[0];
+    } else {
+        while (itemName === station.name) {
+            itemName = available[Math.floor(Math.random() * available.length)];
+        }
+    }
+
+    const itemIndex = osceData.categories.find(cat => cat.id === categoryId).items.indexOf(itemName);
+    const newStation = {
+        number: getCategoryStartNumber(categoryId) + itemIndex,
+        category: categoryId,
+        categoryName: station.categoryName,
+        name: itemName
+    };
     station.number = newStation.number;
     station.name = newStation.name;
     station.categoryName = newStation.categoryName;
