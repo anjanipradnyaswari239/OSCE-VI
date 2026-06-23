@@ -67,8 +67,31 @@ let state = {
     stations: []
 };
 
-const generateBtn = document.getElementById('generateBtn');
-const stationsList = document.getElementById('stationsList');
+let generateBtn = null;
+let stationsList = null;
+let selectionPanel = null;
+let selectionError = null;
+
+function init() {
+    generateBtn = document.getElementById('generateBtn');
+    stationsList = document.getElementById('stationsList');
+    selectionPanel = document.getElementById('selectionPanel');
+    selectionError = document.getElementById('selectionError');
+
+    if (!generateBtn || !stationsList || !selectionPanel || !selectionError) {
+        console.error('Missing required UI elements:', {
+            generateBtn,
+            stationsList,
+            selectionPanel,
+            selectionError
+        });
+        return;
+    }
+
+    generateBtn.addEventListener('click', generateStations);
+    renderSelectionPanel();
+    renderStations();
+}
 
 function getRandomStationItem(categoryId, excludeNumber = null) {
     const category = osceData.categories.find(cat => cat.id === categoryId);
@@ -101,6 +124,30 @@ function getCategoryStartNumber(categoryId) {
     return number;
 }
 
+function escapeHtml(text) {
+    return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function renderSelectionPanel() {
+    selectionPanel.innerHTML = osceData.categories.map(category => {
+        return `
+            <div class="filter-category">
+                <h3>${escapeHtml(category.name)}</h3>
+                ${category.items.map(item => `
+                    <label class="filter-option">
+                        <input type="checkbox" name="filter-${category.id}" value="${escapeHtml(item)}" checked>
+                        ${escapeHtml(item)}
+                    </label>
+                `).join('')}
+            </div>
+        `;
+    }).join('');
+}
+
 function createStation(categoryId) {
     const item = getRandomStationItem(categoryId);
     return {
@@ -115,9 +162,56 @@ function createStation(categoryId) {
     };
 }
 
+function getSelectedItems(categoryId) {
+    const checkboxes = document.querySelectorAll(`input[name="filter-${categoryId}"]:checked`);
+    return Array.from(checkboxes).map(input => input.value);
+}
+
+function showSelectionError(message) {
+    selectionError.textContent = message;
+    selectionError.classList.remove('hidden');
+}
+
+function clearSelectionError() {
+    selectionError.textContent = '';
+    selectionError.classList.add('hidden');
+}
+
 function generateStations() {
+    clearSelectionError();
+
+    const selectedCategories = osceData.categories.map(category => {
+        const selected = getSelectedItems(category.id);
+        if (selected.length === 0) {
+            showSelectionError(`Please select at least one checklist for ${category.name}.`);
+        }
+        return { category, selected };
+    });
+
+    if (selectedCategories.some(c => c.selected.length === 0)) {
+        return;
+    }
+
     clearAllIntervals();
-    state.stations = ['A', 'B', 'C', 'D'].map(createStation);
+    state.stations = selectedCategories.map(({ category, selected }) => {
+        const itemName = selected[Math.floor(Math.random() * selected.length)];
+        const itemIndex = category.items.indexOf(itemName);
+        const number = getCategoryStartNumber(category.id) + itemIndex;
+        return {
+            number,
+            category: category.id,
+            categoryName: category.name,
+            name: itemName,
+            timerSeconds: 0,
+            isRunning: false,
+            finished: false,
+            intervalId: null,
+            announcedStart: false,
+            announcedOneMinute: false,
+            announcedFinish: false
+        };
+    });
+
     renderStations();
 }
 
@@ -150,6 +244,7 @@ function getPhaseText(seconds) {
 }
 
 function renderStations() {
+    console.log('renderStations called, station count=', state.stations.length);
     if (state.stations.length === 0) {
         stationsList.innerHTML = '<p>Click "Generate Stations" to generate 4 station cards.</p>';
         return;
@@ -357,6 +452,8 @@ function resetStationTimer(categoryId) {
     renderStations();
 }
 
-generateBtn.addEventListener('click', generateStations);
-
-renderStations();
+if (document.readyState === 'loading') {
+    window.addEventListener('DOMContentLoaded', init);
+} else {
+    init();
+}
